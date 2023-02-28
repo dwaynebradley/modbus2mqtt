@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"os/signal"
 	"sync"
@@ -28,7 +27,6 @@ func main() {
 	configPath := flag.String("c", "config.toml", "Path to configuration TOML file.")
 	generateConfigPath := flag.String("g", "", "Path where the default configuration should be generated.")
 	debug := flag.Bool("d", false, "Show debugging information.")
-	modbus_enabled := flag.Bool("m", false, "Enable/disable modbus connection")
 
 	var err error
 
@@ -83,18 +81,16 @@ func main() {
 	// Connect the modbus server
 	var modbusClient *modbus.ModbusClient
 
-	if *modbus_enabled {
-		modbusClient, err = createModbusClient(config.Modbus.URL, time.Duration(config.Modbus.Timeout))
-		if err != nil {
-			log.Fatalf("Can't establish modbus connection: %v\n", err)
-		} else {
-			log.Printf("Modbus connection successful: %s\n", config.Modbus.URL)
-		}
-		if config.Modbus.UnitId > 0 {
-			modbusClient.SetUnitId(uint8(config.Modbus.UnitId))
-		}
-		defer modbusClient.Close()
+	modbusClient, err = createModbusClient(config.Modbus.URL, time.Duration(config.Modbus.Timeout)*time.Millisecond)
+	if err != nil {
+		log.Fatalf("Can't establish modbus connection: %v\n", err)
+	} else {
+		log.Printf("Modbus connection successful: %s\n", config.Modbus.URL)
 	}
+	if config.Modbus.UnitId > 0 {
+		modbusClient.SetUnitId(uint8(config.Modbus.UnitId))
+	}
+	defer modbusClient.Close()
 
 	wg := sync.WaitGroup{}
 
@@ -141,11 +137,9 @@ func main() {
 
 				templateKV.Timestamp = uint(time.Now().Unix())
 
-				rdgs := []ReadingInfo{}
-				for _, reading := range templateKV.Readings {
-					r := reading
-					r.Value = fmt.Sprintf("%.4f", rand.Float32())
-					rdgs = append(rdgs, r)
+				rdgs, err := GetDeviceModbusData(modbusClient, templateKV.Readings)
+				if err != nil {
+					panic(err)
 				}
 				templateKV.Readings = rdgs
 
