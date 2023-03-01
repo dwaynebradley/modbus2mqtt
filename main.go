@@ -27,7 +27,8 @@ var showDebugInfo bool
 
 func main() {
 	configPath := flag.String("c", "config.toml", "Path to configuration TOML file.")
-	generateConfigPath := flag.String("g", "", "Path where the default configuration should be generated.")
+	generateSampleConfig := flag.Bool("g", false, "Generate a sample configuration.")
+	generateConfigPath := flag.String("f", "", "Path where to write example configuration file when used with -g.")
 	debug := flag.Bool("d", false, "Show debugging information.")
 
 	var err error
@@ -40,8 +41,35 @@ func main() {
 	log.SetFlags(log.LstdFlags)
 	flag.Parse()
 
-	if generateConfigPath != nil && len(*generateConfigPath) != 0 {
-		generateDefaultConfig(*generateConfigPath)
+	if *generateSampleConfig {
+		ec := generateExampleConfig()
+
+		if generateConfigPath == nil || len(*generateConfigPath) == 0 {
+			// Just print the example to the screen
+			fmt.Print(ec)
+		} else {
+			if _, err := os.Stat(*generateConfigPath); err == nil {
+				// path/to/whatever exists - delete it so we can replace it
+				err = os.Remove(*generateConfigPath)
+				if err != nil {
+					log.Fatal(err)
+				}
+			} else if os.IsNotExist(err) {
+				// path/to/whatever does *not* exist - good to go
+			} else {
+				// Schrodinger: file may or may not exist. See err for details.
+				log.Fatal(err)
+			}
+
+			f, err := os.Create(*generateConfigPath)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			defer f.Close()
+
+			f.WriteString(ec)
+		}
 		os.Exit(0)
 	}
 

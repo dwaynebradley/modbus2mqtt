@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"os"
 
 	"github.com/BurntSushi/toml"
 )
@@ -109,56 +107,36 @@ func dumpConfig(config tomlConfig) {
 
 }
 
-func generateDefaultConfig(filename string) {
-	if _, err := os.Stat(filename); err == nil {
-		// path/to/whatever exists - delete it
-		err = os.Remove(filename)
-		if err != nil {
-			log.Fatal(err)
-		}
-	} else if os.IsNotExist(err) {
-		// path/to/whatever does *not* exist - good to go
-	} else {
-		// Schrodinger: file may or may not exist. See err for details.
-		log.Fatal(err)
-	}
+func generateExampleConfig() string {
+	c := "[modbus]\n"
+	c += "url = \"tcp://localhost:502\"\n"
+	c += "unit_id = 1\n"
+	c += "timeout = 1000\n"
+	c += "poll_rate = 1000\n"
+	c += "reconnect_pause = 5000\n"
+	c += "registers = [\n"
+	c += "    {holding_register = 40001, size = \"UINT32\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_1\"},\n"
+	c += "    {holding_register = 40003, size = \"SINT32\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_2\"},\n"
+	c += "    {holding_register = 40005, size = \"UINT64\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_3\"}\n"
+	c += "]\n"
+	c += "\n"
+	c += "[mqtt]\n"
+	c += "url = \"tcp://localhost:1883\"\n"
+	c += "qos = 0\n"
+	c += "client_id = \"some_unique_client_id\" # 23 characters max\n"
+	c += "connect_retry = 1000\n"
+	c += "username = \"my_username\"\n"
+	c += "password = \"my_password\"\n"
+	c += "pub_topic = \"my/special/topic\"\n"
+	c += "pub_rate = 1000\n"
+	c += "\n"
+	c += "[template_data]\n"
+	c += "template_file = \"/some/file/path/filename.go.tmpl\"\n"
+	c += "\n"
+	c += "[template_data.template_kv]\n"
+	c += "key_name_1 = \"key_value_1\"\n"
+	c += "key_name_2 = \"key_value_2\"\n"
+	c += "key_name_3 = \"key_value_3\"\n"
 
-	f, err := os.Create(filename)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer f.Close()
-
-	f.WriteString("[modbus]\n")
-	f.WriteString("url = \"tcp://localhost:502\"\n")
-	f.WriteString("unit_id = 1\n")
-	f.WriteString("timeout = 1000\n")
-	f.WriteString("poll_rate = 1000\n")
-	f.WriteString("reconnect_pause = 5000\n")
-	f.WriteString("registers = [\n")
-	f.WriteString("    {holding_register = 40001, size = \"UINT32\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_1\"},\n")
-	f.WriteString("    {holding_register = 40003, size = \"SINT32\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_2\"},\n")
-	f.WriteString("    {holding_register = 40005, size = \"UINT64\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_3\"}\n")
-	f.WriteString("]\n")
-	f.WriteString("\n")
-	f.WriteString("[mqtt]\n")
-	f.WriteString("url = \"tcp://localhost:1883\"\n")
-	f.WriteString("qos = 0\n")
-	f.WriteString("client_id = \"some_unique_client_id\" # 23 characters max\n")
-	f.WriteString("connect_retry = 1000\n")
-	f.WriteString("username = \"my_username\"\n")
-	f.WriteString("password = \"my_password\"\n")
-	f.WriteString("pub_topic = \"my/special/topic\"\n")
-	f.WriteString("pub_rate = 1000\n")
-	f.WriteString("\n")
-	f.WriteString("[template_data]\n")
-	f.WriteString("template_file = \"/some/file/path/filename.go.tmpl\"\n")
-	f.WriteString("\n")
-	f.WriteString("[template_data.template_kv]\n")
-	f.WriteString("key_name_1 = \"key_value_1\"\n")
-	f.WriteString("key_name_2 = \"key_value_2\"\n")
-	f.WriteString("key_name_3 = \"key_value_3\"\n")
-
-	f.Sync()
+	return c
 }
