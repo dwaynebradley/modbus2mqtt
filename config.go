@@ -39,10 +39,16 @@ type RegisterValue struct {
 	Value     string
 }
 
+type TimestampInfo struct {
+	Seconds     int64
+	Nanoseconds int32
+	RFC3339     string
+}
+
 type TemplateInfo struct {
 	TemplateFile   string            `toml:"template_file"`
 	TemplateKV     map[string]string `toml:"template_kv"`
-	Timestamp      int64
+	Timestamp      TimestampInfo
 	RegisterValues []RegisterValue
 }
 

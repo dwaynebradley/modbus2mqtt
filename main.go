@@ -193,7 +193,13 @@ func main() {
 
 				templateData := config.Template
 
-				templateData.Timestamp = time.Now().Unix()
+				time_now := time.Now().UTC()
+				tsInfo := TimestampInfo{
+					Seconds:     time_now.Unix(),
+					Nanoseconds: int32(time_now.Nanosecond()),
+					RFC3339:     time_now.Format(time.RFC3339),
+				}
+				templateData.Timestamp = tsInfo
 
 				rvs, err := GetDeviceModbusData(modbusClient, config.Modbus.Registers)
 				if err != nil {
