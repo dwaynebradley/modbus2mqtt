@@ -3,10 +3,8 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
-	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -16,6 +14,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/simonvetter/modbus"
+	"gitlab.com/mthollylab/modbus2mqtt/logging"
 )
 
 type SafeJson struct {
@@ -23,25 +22,32 @@ type SafeJson struct {
 	JsonString string
 }
 
-var showDebugInfo bool
+func showUsageAndExit(exitcode int) {
+	fmt.Println("Usage: modbus2mqtt [-c file] [-g] [-f file] [-loglevel LEVEL] [-h]")
+	flag.PrintDefaults()
+
+	os.Exit(exitcode)
+}
 
 func main() {
 	configPath := flag.String("c", "config.toml", "Path to configuration TOML file.")
 	generateSampleConfig := flag.Bool("g", false, "Generate a sample configuration.")
 	generateConfigPath := flag.String("f", "", "Path where to write example configuration file when used with -g.")
-	debug := flag.Bool("d", false, "Show debugging information.")
+	loggingLevel := flag.String("loglevel", "ERROR", "Logging level (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)")
+	showHelp := flag.Bool("h", false, "Show help message")
+	flag.Parse()
+
+	if *showHelp {
+		showUsageAndExit(0)
+	}
+
+	logging.SetLoggingLevel(*loggingLevel)
 
 	var err error
 
-	showDebugInfo = false
-	if debug != nil {
-		showDebugInfo = *debug
-	}
-
-	log.SetFlags(log.LstdFlags)
-	flag.Parse()
-
 	if *generateSampleConfig {
+		logging.Info("Generating sample configuration file")
+
 		ec := generateExampleConfig()
 
 		if generateConfigPath == nil || len(*generateConfigPath) == 0 {
@@ -52,48 +58,56 @@ func main() {
 				// path/to/whatever exists - delete it so we can replace it
 				err = os.Remove(*generateConfigPath)
 				if err != nil {
-					log.Fatal(err)
+					fields := logging.NewFieldMap("err", err.Error())
+					logging.Fatalf("Could not remove previous sample configuration file", fields)
 				}
 			} else if os.IsNotExist(err) {
 				// path/to/whatever does *not* exist - good to go
 			} else {
 				// Schrodinger: file may or may not exist. See err for details.
-				log.Fatal(err)
+				fields := logging.NewFieldMap("err", err.Error())
+				logging.Fatalf("Unknown error", fields)
 			}
 
 			f, err := os.Create(*generateConfigPath)
 			if err != nil {
-				log.Fatal(err)
+				fields := logging.NewFieldMap("err", err.Error())
+				logging.Fatalf("Could not create sample configuration file", fields)
 			}
 
 			defer f.Close()
 
 			f.WriteString(ec)
+
+			fields := logging.NewFieldMap("file", *generateConfigPath)
+			logging.Infof("Created sample configuration file", fields)
 		}
 		os.Exit(0)
 	}
 
 	if configPath == nil || len(*configPath) == 0 {
-		log.Fatal("You must supply a configuration file")
+		logging.Fatal("Path to configuration file not provided")
 	}
 
 	config, err := loadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("Can't load configuration file: %v\n", err)
+		fields := logging.NewFieldMap("err", err.Error())
+		logging.AddField(fields, "file", *configPath)
+		logging.Fatalf("Can't load configuration file", fields)
 	} else {
-		if showDebugInfo {
-			log.Println("===========================")
-			log.Println("Configuration file: BEGIN")
-			log.Println("===========================")
+		if logging.GetLoggingLevel() <= logging.DebugLevel {
+			logging.Debug("===========================")
+			logging.Debug("Configuration file: BEGIN")
+			logging.Debug("===========================")
 			dumpConfig(config)
-			log.Println("===========================")
-			log.Println("Configuration file: END")
-			log.Println("===========================")
+			logging.Debug("===========================")
+			logging.Debug("Configuration file: END")
+			logging.Debug("===========================")
 		}
 	}
 
 	if config.Template.TemplateFile == "" {
-		panic(errors.New("Template file path missing in config file"))
+		logging.Fatal("Path to template file is missing in config file")
 	}
 
 	// Define a "dec" function that we can use inside of the template since Go templates
@@ -106,13 +120,15 @@ func main() {
 
 	tmpl_bytes, err := os.ReadFile(config.Template.TemplateFile)
 	if err != nil {
-		panic(err)
+		fields := logging.NewFieldMap("err", err.Error())
+		logging.Fatalf("Could not read template file", fields)
 	}
 	tmpl_content := string(tmpl_bytes)
 
 	tmpl, err := template.New("payload").Funcs(funcMap).Parse(tmpl_content)
 	if err != nil {
-		panic(err)
+		fields := logging.NewFieldMap("err", err.Error())
+		logging.Fatalf("Could not parse template file", fields)
 	}
 
 	// Connect to the MQTT broker where messages will be published
@@ -132,7 +148,10 @@ func main() {
 		}
 
 		randClientId := baseStr + string(b)
-		fmt.Printf("Generated client id = \"%s\" (%d)", randClientId, len(randClientId))
+
+		fields := logging.NewFieldMap("ClientId", randClientId)
+		logging.Infof("Generated random client id for MQTT connection", fields)
+
 		opts.SetClientID(randClientId)
 	} else {
 		opts.SetClientID(config.Mqtt.ClientId)
@@ -146,7 +165,10 @@ func main() {
 	opts.OnConnectionLost = connectionLostHandler
 	mqttClient := mqtt.NewClient(opts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
-		panic(token.Error())
+		fields := logging.NewFieldMap("err", token.Error().Error())
+		logging.Fatalf("MQTT client connection failed", fields)
+	} else {
+		logging.Info("MQTT client connection successful")
 	}
 
 	// Connect the modbus server
@@ -154,9 +176,10 @@ func main() {
 
 	modbusClient, err = createModbusClient(config.Modbus.URL, time.Duration(config.Modbus.Timeout)*time.Millisecond)
 	if err != nil {
-		log.Fatalf("Can't establish modbus connection: %v\n", err)
+		fields := logging.NewFieldMap("err", err.Error())
+		logging.Fatalf("Modbus client connection failed", fields)
 	} else {
-		log.Printf("Modbus connection successful: %s\n", config.Modbus.URL)
+		logging.Info("Modbus client connection successful")
 	}
 	if config.Modbus.UnitId > 0 {
 		modbusClient.SetUnitId(uint8(config.Modbus.UnitId))
@@ -203,7 +226,8 @@ func main() {
 
 				rvs, err := GetDeviceModbusData(modbusClient, config.Modbus.Registers)
 				if err != nil {
-					panic(err)
+					fields := logging.NewFieldMap("err", err.Error())
+					logging.Fatalf("Error retrieving modbus data. Exiting.", fields)
 				}
 				templateData.RegisterValues = rvs
 
@@ -211,7 +235,8 @@ func main() {
 
 				err = tmpl.Execute(&json_buf, templateData)
 				if err != nil {
-					panic(err)
+					fields := logging.NewFieldMap("err", err.Error())
+					logging.Errorf("Could not execute template substition", fields)
 				}
 
 				json.mu.Lock()
@@ -238,14 +263,24 @@ func main() {
 				wg.Done()
 				return
 			case <-mqttTicker.C:
-				// Copy source data to use for publishing. Lock the data before copying
-				// so the other routines can keep flowing uninterrupted.
 				json.mu.Lock()
 				j := json.JsonString
 				json.mu.Unlock()
 
-				token := mqttClient.Publish(config.Mqtt.PubTopic, byte(config.Mqtt.Qos), false, j)
-				token.Wait()
+				if mqttClient.IsConnected() {
+					// Copy source data to use for publishing. Lock the data before copying
+					// so the other routines can keep flowing uninterrupted.
+					fields := logging.NewFieldMap("payload", j)
+					logging.Debugf("Payload to be published", fields)
+
+					token := mqttClient.Publish(config.Mqtt.PubTopic, byte(config.Mqtt.Qos), false, j)
+					token.Wait()
+
+					logging.Debug("Payload published to MQTT")
+				} else {
+					fields := logging.NewFieldMap("payload", j)
+					logging.Warningf("MQTT client is not connected. Cannot publish payload", fields)
+				}
 			}
 		}
 	}()
@@ -278,7 +313,8 @@ func main() {
 }
 
 var connectionLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
-	fmt.Printf("Connect lost: %v", err)
+	fields := logging.NewFieldMap("err", err.Error())
+	logging.Warningf("Connection lost to MQTT broker", fields)
 }
 
 func createModbusClient(url string, timeout time.Duration) (*modbus.ModbusClient, error) {
