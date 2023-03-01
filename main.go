@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -62,10 +64,51 @@ func main() {
 		}
 	}
 
+	if config.Template.TemplateFile == "" {
+		panic(errors.New("Template file path missing in config file"))
+	}
+
+	// Define a "dec" function that we can use inside of the template since Go templates
+	// cannot do simple "math" functions such as + or - by default
+	funcMap := template.FuncMap{
+		"dec": func(i int) int {
+			return i - 1
+		},
+	}
+
+	tmpl_bytes, err := os.ReadFile(config.Template.TemplateFile)
+	if err != nil {
+		panic(err)
+	}
+	tmpl_content := string(tmpl_bytes)
+
+	tmpl, err := template.New("payload").Funcs(funcMap).Parse(tmpl_content)
+	if err != nil {
+		panic(err)
+	}
+
 	// Connect to the MQTT broker where messages will be published
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(config.Mqtt.URL)
-	opts.SetClientID("modbus2mqtt")
+	if config.Mqtt.ClientId == "" {
+		// Generate a random client id
+		baseStr := "modbus2mqtt-"
+
+		chars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+		ll := len(chars)
+		length := 23 - len(baseStr)
+		b := make([]byte, length)
+		rand.Read(b) // generates len(b) random bytes
+		for i := 0; i < length; i++ {
+			b[i] = chars[int(b[i])%ll]
+		}
+
+		randClientId := baseStr + string(b)
+		fmt.Printf("Generated client id = \"%s\" (%d)", randClientId, len(randClientId))
+		opts.SetClientID(randClientId)
+	} else {
+		opts.SetClientID(config.Mqtt.ClientId)
+	}
 	opts.SetCleanSession(true)
 	opts.SetUsername(config.Mqtt.Username)
 	opts.SetPassword(config.Mqtt.Password)
@@ -94,19 +137,6 @@ func main() {
 
 	wg := sync.WaitGroup{}
 
-	// Define a "dec" function that we can use inside of the template since Go templates
-	// cannot do simple "math" functions such as + or - by default
-	funcMap := template.FuncMap{
-		"dec": func(i int) int {
-			return i - 1
-		},
-	}
-
-	tmpl, err := template.New("test").Funcs(funcMap).Parse(JSON_TEMPLATE)
-	if err != nil {
-		panic(err)
-	}
-
 	var allDone []chan bool
 
 	// ===========================================================
@@ -133,19 +163,19 @@ func main() {
 				// random data into the readings for now.
 				// ================================================================
 
-				templateKV := config.TemplateKV
+				templateData := config.Template
 
-				templateKV.Timestamp = uint(time.Now().Unix())
+				templateData.Timestamp = time.Now().Unix()
 
-				rdgs, err := GetDeviceModbusData(modbusClient, templateKV.Readings)
+				rvs, err := GetDeviceModbusData(modbusClient, config.Modbus.Registers)
 				if err != nil {
 					panic(err)
 				}
-				templateKV.Readings = rdgs
+				templateData.RegisterValues = rvs
 
 				var json_buf bytes.Buffer
 
-				err = tmpl.Execute(&json_buf, templateKV)
+				err = tmpl.Execute(&json_buf, templateData)
 				if err != nil {
 					panic(err)
 				}

@@ -4,25 +4,26 @@ unit_id = 1
 timeout = 1000
 poll_rate = 1000
 reconnect_pause = 5000
+registers = [
+    {holding_register = 40001, size = "UINT32", multiplier = 0.01, format = "%.2f", param_name = "my_param_name_1"},
+    {holding_register = 40003, size = "SINT32", multiplier = 0.01, param_name = "my_param_name_2"},
+    {holding_register = 40005, size = "UINT64", param_name = "my_param_name_3"}
+]
 
 [mqtt]
 url = "mqtt://localhost:1883"
 qos = 0
+client_id = "some_unique_client_id" # 23 characters max
 connect_retry = 1000
 username = "my_username"
 password = "my_password"
 pub_topic = "my/special/topic"
 pub_rate = 1000
 
-[template_kv]
-gateway_name = "my_gateway_name"
-gateway_model= "my_gateway_model"
-gateway_serial = "my_gateway_serial"
-device_name = "my_device_name"
-device_model = "my_device_model"
-device_serial = "my_device_serial"
-readings = [
-    {holding_register = 40001, size = "UINT32", multiplier = 0.01, format = "%.2f", param_name = "my_param_name_1"},
-    {holding_register = 40003, size = "UINT32", multiplier = 0.01, param_name = "my_param_name_2"},
-    {holding_register = 40005, size = "UINT32", param_name = "my_param_name_3"}
-]
+[template_data]
+template_file = "/some/file/path/filename.go.tmpl"
+
+[template_data.template_kv]
+key_name_1 = "key_value_1"
+key_name_2 = "key_value_2"
+key_name_3 = "key_value_3"

@@ -1,0 +1,16 @@
+{
+    "timestamp": {{.Timestamp}},
+    "gateway": {
+        "name": "{{index .TemplateKV "gateway_name"}}",
+        "model": "{{index .TemplateKV "gateway_model"}}",
+        "serial": "{{index .TemplateKV "gateway_serial"}}"
+    },
+    "device": {
+        "name": "{{index .TemplateKV "device_name"}}",
+        "model": "{{index .TemplateKV "device_model"}}",
+        "serial": "{{index .TemplateKV "device_serial"}}",
+        "readings": [
+{{$l := dec (len .RegisterValues)}}{{range $i, $register := .RegisterValues}}            {"param": "{{$register.ParamName}}", "value": "{{$register.Value}}"}{{if lt $i $l}},{{end}}
+{{end}}        ]
+    }
+}
