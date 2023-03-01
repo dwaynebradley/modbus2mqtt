@@ -221,6 +221,7 @@ func main() {
 					Seconds:     time_now.Unix(),
 					Nanoseconds: int32(time_now.Nanosecond()),
 					RFC3339:     time_now.Format(time.RFC3339),
+					RFC3339Nano: time_now.Format(time.RFC3339Nano),
 				}
 				templateData.Timestamp = tsInfo
 

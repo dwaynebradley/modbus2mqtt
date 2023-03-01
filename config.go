@@ -43,6 +43,7 @@ type TimestampInfo struct {
 	Seconds     int64
 	Nanoseconds int32
 	RFC3339     string
+	RFC3339Nano string
 }
 
 type TemplateInfo struct {
