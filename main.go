@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
 	"flag"
 	"fmt"
 	"os"
@@ -106,10 +105,6 @@ func main() {
 		}
 	}
 
-	if config.Template.TemplateFile == "" {
-		logging.Fatal("Path to template file is missing in config file")
-	}
-
 	// Define a "dec" function that we can use inside of the template since Go templates
 	// cannot do simple "math" functions such as + or - by default
 	funcMap := template.FuncMap{
@@ -134,31 +129,12 @@ func main() {
 	// Connect to the MQTT broker where messages will be published
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(config.Mqtt.URL)
-	if config.Mqtt.ClientId == "" {
-		// Generate a random client id
-		baseStr := "modbus2mqtt-"
-
-		chars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
-		ll := len(chars)
-		length := 23 - len(baseStr)
-		b := make([]byte, length)
-		rand.Read(b) // generates len(b) random bytes
-		for i := 0; i < length; i++ {
-			b[i] = chars[int(b[i])%ll]
-		}
-
-		randClientId := baseStr + string(b)
-
-		fields := logging.NewFieldMap("ClientId", randClientId)
-		logging.Infof("Generated random client id for MQTT connection", fields)
-
-		opts.SetClientID(randClientId)
-	} else {
-		opts.SetClientID(config.Mqtt.ClientId)
-	}
+	opts.SetClientID(config.Mqtt.ClientId)
 	opts.SetCleanSession(true)
-	opts.SetUsername(config.Mqtt.Username)
-	opts.SetPassword(config.Mqtt.Password)
+	if len(config.Mqtt.Username) > 0 || len(config.Mqtt.Password) > 0 {
+		opts.SetUsername(config.Mqtt.Username)
+		opts.SetPassword(config.Mqtt.Password)
+	}
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(time.Duration(config.Mqtt.ConnectRetry))

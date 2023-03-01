@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
 
 	"github.com/BurntSushi/toml"
+	"gitlab.com/mthollylab/modbus2mqtt/logging"
 )
 
 type RegisterConfig struct {
@@ -15,12 +17,11 @@ type RegisterConfig struct {
 }
 
 type ModbusInfo struct {
-	URL            string           `toml:"url"`
-	UnitId         int64            `toml:"unit_id"`
-	Timeout        int64            `toml:"timeout"`
-	PollRate       int64            `toml:"poll_rate"`
-	ReconnectPause int64            `toml:"reconnect_pause"`
-	Registers      []RegisterConfig `toml:"registers"`
+	URL       string           `toml:"url"`
+	UnitId    int64            `toml:"unit_id"`
+	Timeout   int64            `toml:"timeout"`
+	PollRate  int64            `toml:"poll_rate"`
+	Registers []RegisterConfig `toml:"registers"`
 }
 
 type MqttInfo struct {
@@ -65,6 +66,23 @@ func loadConfig(filePath string) (tomlConfig, error) {
 		return config, err
 	}
 
+	// Add some sane defaults for fields that are not provided
+	// Modbus
+	if len(config.Modbus.URL) == 0 {
+		logging.Fatal("Modbus URL is required")
+	}
+	if config.Modbus.UnitId == 0 {
+		config.Modbus.UnitId = 1
+	}
+	if config.Modbus.Timeout == 0 {
+		config.Modbus.Timeout = 5000
+	}
+	if config.Modbus.PollRate == 0 {
+		config.Modbus.PollRate = 1000
+	}
+	if config.Modbus.Registers == nil || len(config.Modbus.Registers) == 0 {
+		logging.Fatal("You must define at least 1 Modbus register to read")
+	}
 	for i := 0; i < len(config.Modbus.Registers); i++ {
 		if config.Modbus.Registers[i].Multiplier == 0.0 {
 			config.Modbus.Registers[i].Multiplier = 1.0
@@ -72,6 +90,54 @@ func loadConfig(filePath string) (tomlConfig, error) {
 		if config.Modbus.Registers[i].Format == "" {
 			config.Modbus.Registers[i].Format = "%.0f"
 		}
+	}
+
+	// MQTT
+	if len(config.Mqtt.URL) == 0 {
+		logging.Fatal("MQTT URL is required")
+	}
+	// QOS will default to 0 if not provided
+	if config.Mqtt.ClientId == "" {
+		// Generate a random client id
+		baseStr := "modbus2mqtt-"
+
+		chars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+		ll := len(chars)
+		length := 23 - len(baseStr)
+		b := make([]byte, length)
+		rand.Read(b) // generates len(b) random bytes
+		for i := 0; i < length; i++ {
+			b[i] = chars[int(b[i])%ll]
+		}
+
+		randClientId := baseStr + string(b)
+
+		fields := logging.NewFieldMap("ClientId", randClientId)
+		logging.Infof("Generated random client id for MQTT connection", fields)
+
+		config.Mqtt.ClientId = randClientId
+	}
+	if config.Mqtt.ConnectRetry == 0 {
+		config.Mqtt.ConnectRetry = 1000
+	}
+	if len(config.Mqtt.Username) > 0 || len(config.Mqtt.Password) > 0 {
+		if len(config.Mqtt.Username) == 0 {
+			logging.Fatal("MQTT username is required when providing a password")
+		}
+		if len(config.Mqtt.Password) == 0 {
+			logging.Fatal("MQTT password is required when providing a username")
+		}
+	}
+	if len(config.Mqtt.PubTopic) == 0 {
+		logging.Fatal("MQTT topic is required")
+	}
+	if config.Mqtt.PubRate == 0 {
+		config.Mqtt.PubRate = 1000
+	}
+
+	// Template Data
+	if len(config.Template.TemplateFile) == 0 {
+		logging.Fatal("Path to template file is required")
 	}
 
 	return config, nil
@@ -83,7 +149,6 @@ func dumpConfig(config tomlConfig) {
 	fmt.Printf("unit_id = %d\n", config.Modbus.UnitId)
 	fmt.Printf("timeout = %d\n", config.Modbus.Timeout)
 	fmt.Printf("poll_rate = %d\n", config.Modbus.PollRate)
-	fmt.Printf("reconnect_pause = %d\n", config.Modbus.ReconnectPause)
 	fmt.Printf("registers = [\n")
 	for i, reading := range config.Modbus.Registers {
 		fmt.Printf("    {holding_register = %d, size = \"%s\", multiplier = %f, format = \"%s\" param_name = \"%s\"}", reading.HoldingRegister, reading.Size, reading.Multiplier, reading.Format, reading.ParamName)
@@ -120,7 +185,6 @@ func generateExampleConfig() string {
 	c += "unit_id = 1\n"
 	c += "timeout = 1000\n"
 	c += "poll_rate = 1000\n"
-	c += "reconnect_pause = 5000\n"
 	c += "registers = [\n"
 	c += "    {holding_register = 40001, size = \"UINT32\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_1\"},\n"
 	c += "    {holding_register = 40003, size = \"SINT32\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_2\"},\n"
