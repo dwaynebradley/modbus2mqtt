@@ -29,7 +29,7 @@ func showUsageAndExit(exitcode int) {
 }
 
 func main() {
-	configPath := flag.String("c", "config.toml", "Path to configuration TOML file.")
+	configPath := flag.String("c", "/config/config.toml", "Path to configuration TOML file.")
 	generateSampleConfig := flag.Bool("g", false, "Generate a sample configuration.")
 	generateConfigPath := flag.String("f", "", "Path where to write example configuration file when used with -g.")
 	loggingLevel := flag.String("loglevel", "ERROR", "Logging level (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)")
