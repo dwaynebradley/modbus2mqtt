@@ -54,10 +54,16 @@ type TemplateInfo struct {
 	RegisterValues []RegisterValue
 }
 
+type MonitoringInfo struct {
+	Enabled bool   `toml:"enabled"`
+	Port    uint16 `toml:"port"`
+}
+
 type tomlConfig struct {
-	Modbus   ModbusInfo   `toml:"modbus"`
-	Mqtt     MqttInfo     `toml:"mqtt"`
-	Template TemplateInfo `toml:"template_data"`
+	Modbus     ModbusInfo     `toml:"modbus"`
+	Mqtt       MqttInfo       `toml:"mqtt"`
+	Template   TemplateInfo   `toml:"template_data"`
+	Monitoring MonitoringInfo `toml:"monitoring"`
 }
 
 func loadConfig(filePath string) (tomlConfig, error) {
@@ -67,6 +73,7 @@ func loadConfig(filePath string) (tomlConfig, error) {
 	}
 
 	// Add some sane defaults for fields that are not provided
+
 	// Modbus
 	if len(config.Modbus.URL) == 0 {
 		logging.Fatal("Modbus URL is required")
@@ -140,6 +147,11 @@ func loadConfig(filePath string) (tomlConfig, error) {
 		logging.Fatal("Path to template file is required")
 	}
 
+	// Monitoring
+	if config.Monitoring.Port <= 0 {
+		config.Monitoring.Port = 62112
+	}
+
 	return config, nil
 }
 
@@ -160,7 +172,7 @@ func dumpConfig(config tomlConfig) {
 	fmt.Printf("]\n")
 	fmt.Printf("\n")
 	fmt.Printf("[mqtt]\n")
-	fmt.Printf("url = \"%s\"\n", config.Modbus.URL)
+	fmt.Printf("url = \"%s\"\n", config.Mqtt.URL)
 	fmt.Printf("qos = %d\n", config.Mqtt.Qos)
 	fmt.Printf("client_id = \"%s\"\n", config.Mqtt.ClientId)
 	fmt.Printf("connect_retry = %d\n", config.Mqtt.ConnectRetry)
@@ -176,6 +188,10 @@ func dumpConfig(config tomlConfig) {
 	for k, v := range config.Template.TemplateKV {
 		fmt.Printf("\"%s\" = \"%s\"\n", k, v)
 	}
+	fmt.Printf("\n")
+	fmt.Printf("[monitoring]\n")
+	fmt.Printf("enabled = %v\n", config.Monitoring.Enabled)
+	fmt.Printf("port = %d\n", config.Monitoring.Port)
 
 }
 
@@ -208,6 +224,10 @@ func generateExampleConfig() string {
 	c += "key_name_1 = \"key_value_1\"\n"
 	c += "key_name_2 = \"key_value_2\"\n"
 	c += "key_name_3 = \"key_value_3\"\n"
+	c += "\n"
+	c += "[monitoring]\n"
+	c += "enabled = true\n"
+	c += "port = 62112\n"
 
 	return c
 }

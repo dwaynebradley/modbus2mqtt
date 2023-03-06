@@ -27,3 +27,7 @@ template_file = "/some/file/path/filename.go.tmpl"
 key_name_1 = "key_value_1"
 key_name_2 = "key_value_2"
 key_name_3 = "key_value_3"
+
+[monitoring]
+enabled = true
+port = 62112

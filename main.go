@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"text/template"
@@ -14,7 +17,40 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/simonvetter/modbus"
 	"gitlab.com/mthollylab/modbus2mqtt/logging"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+type metrics struct {
+	mu                     sync.Mutex
+	mqttTotalPublishes     prometheus.Counter
+	mqttTotalPublishErrors prometheus.Counter
+	modbusTotalPolls       prometheus.Counter
+}
+
+func NewMetrics(reg prometheus.Registerer) *metrics {
+	metrics := &metrics{
+		mqttTotalPublishes: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "modbus2mqtt_mqtt_publishes_total",
+			Help: "The total number successful of MQTT publishes with mapped modbus data",
+		}),
+		mqttTotalPublishErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "modbus2mqtt_mqtt_publish_errors_total",
+			Help: "The total number of MQTT errors that have occurred during a publish",
+		}),
+		modbusTotalPolls: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "modbus2mqtt_modbus_polls_total",
+			Help: "The total number of modbus polls attempted",
+		}),
+	}
+
+	reg.MustRegister(metrics.mqttTotalPublishes)
+	reg.MustRegister(metrics.mqttTotalPublishErrors)
+	reg.MustRegister(metrics.modbusTotalPolls)
+
+	return metrics
+}
 
 type SafeJson struct {
 	mu         sync.Mutex
@@ -140,6 +176,7 @@ func main() {
 	opts.SetConnectRetryInterval(time.Duration(config.Mqtt.ConnectRetry))
 	opts.OnConnectionLost = connectionLostHandler
 	mqttClient := mqtt.NewClient(opts)
+	logging.Debug("Attempting MQTT broker connection")
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
 		fields := logging.NewFieldMap("err", token.Error().Error())
 		logging.Fatalf("MQTT client connection failed", fields)
@@ -161,6 +198,12 @@ func main() {
 		modbusClient.SetUnitId(uint8(config.Modbus.UnitId))
 	}
 	defer modbusClient.Close()
+
+	// Create a non-global registry.
+	reg := prometheus.NewRegistry()
+
+	// Create new metrics and register them using the custom registry.
+	metrics := NewMetrics(reg)
 
 	wg := sync.WaitGroup{}
 
@@ -185,10 +228,9 @@ func main() {
 				wg.Done()
 				return
 			case <-modbusTicker.C:
-				// ================================================================
-				// TODO: Actually poll the modbus device to get data. Just putting
-				// random data into the readings for now.
-				// ================================================================
+				metrics.mu.Lock()
+				metrics.modbusTotalPolls.Inc()
+				metrics.mu.Unlock()
 
 				templateData := config.Template
 
@@ -244,30 +286,97 @@ func main() {
 				j := json.JsonString
 				json.mu.Unlock()
 
-				if mqttClient.IsConnected() {
+				if len(j) == 0 {
+					logging.Warning("No payload to publish")
+				} else if mqttClient.IsConnected() {
 					// Copy source data to use for publishing. Lock the data before copying
 					// so the other routines can keep flowing uninterrupted.
 					fields := logging.NewFieldMap("payload", j)
 					logging.Debugf("Payload to be published", fields)
 
 					token := mqttClient.Publish(config.Mqtt.PubTopic, byte(config.Mqtt.Qos), false, j)
-					token.Wait()
+					go func() {
+						<-token.Done()
+						if token.Error() == nil {
+							metrics.mu.Lock()
+							metrics.mqttTotalPublishes.Inc()
+							metrics.mu.Unlock()
 
-					logging.Debug("Payload published to MQTT")
+							logging.Debug("Payload published to MQTT")
+						} else {
+							metrics.mu.Lock()
+							metrics.mqttTotalPublishErrors.Inc()
+							metrics.mu.Unlock()
+
+							fields := logging.NewFieldMap("err", token.Error().Error())
+							logging.AddField(fields, "payload", j)
+							logging.AddField(fields, "topic", config.Mqtt.PubTopic)
+							logging.AddField(fields, "qos", strconv.Itoa(int(config.Mqtt.Qos)))
+							logging.Errorf("Message not published", fields)
+						}
+					}()
+
 				} else {
+					metrics.mu.Lock()
+					metrics.mqttTotalPublishErrors.Inc()
+					metrics.mu.Unlock()
+
 					fields := logging.NewFieldMap("payload", j)
+					logging.AddField(fields, "topic", config.Mqtt.PubTopic)
+					logging.AddField(fields, "qos", strconv.Itoa(int(config.Mqtt.Qos)))
 					logging.Warningf("MQTT client is not connected. Cannot publish payload", fields)
+
 				}
 			}
 		}
 	}()
+
+	// ===========================================================
+	// Start the Prometheus http handler
+	// ===========================================================
+	servMux := http.NewServeMux()
+	server := http.Server{
+		Addr:    ":" + strconv.Itoa(int(config.Monitoring.Port)),
+		Handler: servMux,
+	}
+	if config.Monitoring.Enabled {
+		httpDone := make(chan bool)
+
+		// Expose metrics and custom registry via an HTTP server
+		// using the HandleFor function. "/metrics" is the usual endpoint for that.
+		servMux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
+
+		wg.Add(1)
+		allDone = append(allDone, httpDone)
+
+		go func() {
+			for {
+				select {
+				case <-httpDone:
+					wg.Done()
+					server.Shutdown(context.Background())
+					return
+				default:
+					if err := server.ListenAndServe(); err != http.ErrServerClosed {
+						fields := logging.NewFieldMap("err", err.Error())
+						logging.Errorf("Metrics could not be exposed", fields)
+					}
+				}
+			}
+		}()
+	}
 
 	signalChan := make(chan os.Signal, 1)
 	doneChan := make(chan bool)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-signalChan
-		// logging.Debug("Received an interrupt")
+		logging.Debug("Received an interrupt")
+
+		if config.Monitoring.Enabled {
+			// Stop the http server
+			server.Close()
+		}
 
 		// Stop all of the go routines
 		for _, done := range allDone {

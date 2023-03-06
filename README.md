@@ -41,6 +41,10 @@ template_file = "/some/file/path/filename.go.tmpl"
 key_name_1 = "key_value_1"
 key_name_2 = "key_value_2"
 key_name_3 = "key_value_3"
+
+[monitoring]
+enabled = true
+port = 62112
 ```
 
 NOTE: All times in the configuration file are in milliseconds
@@ -78,6 +82,10 @@ Array of key/value pairs to use in the template. Each entry must have the format
 ```
 key_name = "key_value"
 ```
+
+#### [monitoring]
+* `enabled` - If provided, enables/disables the Prometheus `/metrics` http endpoint. Default = `false`.
+* `port` - If provided, determines the http port for the `/metrics` endpoint. Default = `62112`.
 
 ## Example templates
 
