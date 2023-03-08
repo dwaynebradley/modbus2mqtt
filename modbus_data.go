@@ -17,6 +17,8 @@ func GetDeviceModbusData(mc *modbus.ModbusClient, registerConfigs []RegisterConf
 	var s16Register int16
 	var s32Register int32
 	var s64Register int64
+	var f32Register float32
+	var f64Register float64
 
 	if mc == nil {
 		return nil, errors.New("Modbus client not connected")
@@ -26,6 +28,9 @@ func GetDeviceModbusData(mc *modbus.ModbusClient, registerConfigs []RegisterConf
 		rv := RegisterValue{
 			ParamName: register.ParamName,
 		}
+
+		// Reset the encoding in case it changes between registers
+		mc.SetEncoding(register.ModbusEndianness, register.ModbusWordOrder)
 
 		switch register.Size {
 		case "UINT16":
@@ -70,6 +75,20 @@ func GetDeviceModbusData(mc *modbus.ModbusClient, registerConfigs []RegisterConf
 			if err == nil {
 				s64Register = int64(u64Register)
 				rv.Value = fmt.Sprintf(register.Format, float64(s64Register)*float64(register.Multiplier))
+			} else {
+				return nil, errors.New("Modbus error: " + err.Error())
+			}
+		case "FLOAT32":
+			f32Register, err = mc.ReadFloat32(uint16(register.HoldingRegister), modbus.HOLDING_REGISTER)
+			if err == nil {
+				rv.Value = fmt.Sprintf(register.Format, f32Register*register.Multiplier)
+			} else {
+				return nil, errors.New("Modbus error: " + err.Error())
+			}
+		case "FLOAT64":
+			f64Register, err = mc.ReadFloat64(uint16(register.HoldingRegister), modbus.HOLDING_REGISTER)
+			if err == nil {
+				rv.Value = fmt.Sprintf(register.Format, f64Register*float64(register.Multiplier))
 			} else {
 				return nil, errors.New("Modbus error: " + err.Error())
 			}

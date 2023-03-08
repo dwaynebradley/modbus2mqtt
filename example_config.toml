@@ -7,7 +7,8 @@ reconnect_pause = 5000
 registers = [
     {holding_register = 40001, size = "UINT32", multiplier = 0.01, format = "%.2f", param_name = "my_param_name_1"},
     {holding_register = 40003, size = "SINT32", multiplier = 0.01, param_name = "my_param_name_2"},
-    {holding_register = 40005, size = "UINT64", param_name = "my_param_name_3"}
+    {holding_register = 40005, size = "UINT64", param_name = "my_param_name_3"},
+    {holding_register = 40009, size = "FLOAT32", endianness = "BIG_ENDIAN", word_order = "HIGH_WORD_FIRST", multiplier = 1.0, format = "%.4f", param_name = "my_param_name_4"}
 ]
 
 [mqtt]

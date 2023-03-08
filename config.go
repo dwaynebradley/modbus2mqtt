@@ -5,15 +5,20 @@ import (
 	"fmt"
 
 	"github.com/BurntSushi/toml"
+	"github.com/simonvetter/modbus"
 	"gitlab.com/mthollylab/modbus2mqtt/logging"
 )
 
 type RegisterConfig struct {
-	HoldingRegister int     `toml:"holding_register"`
-	Size            string  `toml:"size"`
-	Multiplier      float32 `toml:"multiplier"`
-	Format          string  `toml:"format"`
-	ParamName       string  `toml:"param_name"`
+	HoldingRegister  int    `toml:"holding_register"`
+	Size             string `toml:"size"`
+	Endianness       string `toml:"endianness"`
+	ModbusEndianness modbus.Endianness
+	WordOrder        string `toml:"word_order"`
+	ModbusWordOrder  modbus.WordOrder
+	Multiplier       float32 `toml:"multiplier"`
+	Format           string  `toml:"format"`
+	ParamName        string  `toml:"param_name"`
 }
 
 type ModbusInfo struct {
@@ -97,6 +102,28 @@ func loadConfig(filePath string) (tomlConfig, error) {
 		if config.Modbus.Registers[i].Format == "" {
 			config.Modbus.Registers[i].Format = "%.0f"
 		}
+
+		// Default to BIG_ENDIAN
+		switch config.Modbus.Registers[i].Endianness {
+		case "BIG", "BIG_ENDIAN":
+			config.Modbus.Registers[i].ModbusEndianness = modbus.BIG_ENDIAN
+		case "LITTLE", "LITTLE_ENDIAN":
+			config.Modbus.Registers[i].ModbusEndianness = modbus.LITTLE_ENDIAN
+		default:
+			config.Modbus.Registers[i].Endianness = "BIG_ENDIAN"
+			config.Modbus.Registers[i].ModbusEndianness = modbus.BIG_ENDIAN
+		}
+
+		// Default to HIGH_WORK_FIRST
+		switch config.Modbus.Registers[i].WordOrder {
+		case "HIGH", "HIGH_WORD", "HIGH_WORD_FIRST":
+			config.Modbus.Registers[i].ModbusWordOrder = modbus.HIGH_WORD_FIRST
+		case "LOW", "LOW_WORD", "LOW_WORD_FIRST":
+			config.Modbus.Registers[i].ModbusWordOrder = modbus.LOW_WORD_FIRST
+		default:
+			config.Modbus.Registers[i].WordOrder = "HIGH_WORD_FIRST"
+			config.Modbus.Registers[i].ModbusWordOrder = modbus.HIGH_WORD_FIRST
+		}
 	}
 
 	// MQTT
@@ -162,8 +189,8 @@ func dumpConfig(config tomlConfig) {
 	fmt.Printf("timeout = %d\n", config.Modbus.Timeout)
 	fmt.Printf("poll_rate = %d\n", config.Modbus.PollRate)
 	fmt.Printf("registers = [\n")
-	for i, reading := range config.Modbus.Registers {
-		fmt.Printf("    {holding_register = %d, size = \"%s\", multiplier = %f, format = \"%s\" param_name = \"%s\"}", reading.HoldingRegister, reading.Size, reading.Multiplier, reading.Format, reading.ParamName)
+	for i, register := range config.Modbus.Registers {
+		fmt.Printf("    {holding_register = %d, size = \"%s\", endianness = \"%s\", word_order = \"%s\", multiplier = %f, format = \"%s\" param_name = \"%s\"}", register.HoldingRegister, register.Size, register.Endianness, register.WordOrder, register.Multiplier, register.Format, register.ParamName)
 		if i < len(config.Modbus.Registers)-1 {
 			fmt.Printf(",")
 		}
@@ -202,9 +229,10 @@ func generateExampleConfig() string {
 	c += "timeout = 1000\n"
 	c += "poll_rate = 1000\n"
 	c += "registers = [\n"
-	c += "    {holding_register = 40001, size = \"UINT32\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_1\"},\n"
-	c += "    {holding_register = 40003, size = \"SINT32\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_2\"},\n"
-	c += "    {holding_register = 40005, size = \"UINT64\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_3\"}\n"
+	c += "    {holding_register = 40001, size = \"UINT32\", endianness = \"BIG_ENDIAN\", word_order = \"HIGH_WORD_FIRST\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_1\"},\n"
+	c += "    {holding_register = 40003, size = \"SINT32\", endianness = \"BIG_ENDIAN\", word_order = \"HIGH_WORD_FIRST\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_2\"},\n"
+	c += "    {holding_register = 40005, size = \"UINT64\", endianness = \"BIG_ENDIAN\", word_order = \"HIGH_WORD_FIRST\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_3\"}\n"
+	c += "    {holding_register = 40005, size = \"FLOAT32\", endianness = \"BIG_ENDIAN\", word_order = \"HIGH_WORD_FIRST\", multiplier = 0.01, format = \"%.4f\", param_name = \"my_param_name_4\"}\n"
 	c += "]\n"
 	c += "\n"
 	c += "[mqtt]\n"

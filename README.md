@@ -59,7 +59,9 @@ NOTE: All times in the configuration file are in milliseconds
 * `registers` - Array of registers to query for data.
 
     * `holding_register` - Modbus holding register.
-    * `size` - Register size to read (currently supports: UINT16, SINT16, UINT32, SINT32, UINT64, SINT64).
+    * `size` - Register size to read (currently supports: UINT16, SINT16, UINT32, SINT32, UINT64, SINT64, FLOAT32, FLOAT64).
+    * `endianness` - Endian to use for encoding (BIG, BIG_ENDIAN, LITTLE, LITTLE_ENDIAN). Defaults to BIG_ENDIAN if not supplied.
+    * `word_order` - Word order to use for encoding (HIGH, HIGH_WORD, HIGH_WORD_FIRST, LOW, LOW_WORD, LOW_WORD_FIRST). Defaults to HIGH_WORD_ORDER if not supplied.
     * `multiplier` - Decimal multiplier to apply to data after it is read (i.e. register contains kW but you want W, set multiplier=0.001). Defaults to 1 if not supplied.
     * `format` - Formatting to apply to data using Go's string formatting codes (i.e. maximum of 2 decimals, set format="%.2f"). Defaults to "%.0f" if not supplied.
     * `param_name` - Name to use for this register data.
@@ -105,7 +107,6 @@ key_name = "key_value"
         {"param": "{{$register.ParamName}}", "value": "{{$register.Value}}"}{{if lt $i $l}},{{end}}
 {{end}}
     ]
-    }
 }
 ```
 
