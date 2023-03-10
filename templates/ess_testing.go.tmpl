@@ -9,7 +9,8 @@
         "name": "{{index .TemplateKV "device_name"}}",
         "model": "{{index .TemplateKV "device_model"}}",
         "serial": "{{index .TemplateKV "device_serial"}}",
-        "readings": [
+{{if (index .TemplateKV "device_firmware")}}        "firmware": "{{index .TemplateKV "device_firmware"}}",
+{{end}}        "readings": [
 {{$l := dec (len .RegisterValues)}}{{range $i, $register := .RegisterValues}}            {"param": "{{$register.ParamName}}", "value": "{{$register.Value}}"}{{if lt $i $l}},{{end}}
 {{end}}        ]
     }
