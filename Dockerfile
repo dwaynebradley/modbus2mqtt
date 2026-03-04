@@ -1,8 +1,10 @@
-FROM golang:1.20.1 AS build
+GO_VERSION=1.26.0
+
+FROM golang:$GO_VERSION AS build
 RUN mkdir /app 
 ADD . /app/ 
 WORKDIR /app 
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o modbus2mqtt .
+RUN CGO_ENABLED=0 go build -a -ldflags="-s -w" -o modbus2mqtt .
 
 FROM scratch
 COPY --from=build /app/modbus2mqtt /

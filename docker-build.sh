@@ -1,7 +1,5 @@
 #!/bin/bash
 
-export REGISTRY="registry.gitlab.com/mthollylab"
-
 if [ -z $1 ]
 then
     export IMAGE_TAG=$(git branch --show-current)
@@ -17,7 +15,6 @@ fi
 
 docker build \
     -t modbus2mqtt:$IMAGE_TAG \
-    -t $REGISTRY/modbus2mqtt:$IMAGE_TAG \
     -f Dockerfile .
 
 docker save modbus2mqtt:$IMAGE_TAG | gzip > ./build/modbus2mqtt-$IMAGE_TAG.tar.gz
